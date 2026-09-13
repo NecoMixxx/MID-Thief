@@ -59,7 +59,12 @@ tail = False
 def clean_path(path_str: str) -> str:
     if not path_str:
         return ""
-    return path_str.strip().strip('"\'')
+    path_str = path_str.strip()
+    if path_str.startswith("&"):
+        path_str = path_str[1:].strip()
+    while len(path_str) > 1 and ((path_str.startswith("'") and path_str.endswith("'")) or (path_str.startswith('"') and path_str.endswith('"'))):
+        path_str = path_str[1:-1].strip()
+    return path_str
 
 
 def silence_all():
@@ -411,7 +416,7 @@ def help_command():
     print("   loop                      - Toggle auto-looping (ON / OFF)")
     print("\n Audio & Synthesis:")
     print("   volume [0-127]            - Set master volume level")
-    print("   soundfont / sf [name/path]- Change active SoundFont soundbank (.sf2)")
+    print("   soundfont / sf [num/name] - Change active SoundFont soundbank (.sf2)")
     print("   tail                      - Toggle reverb tail recording")
     print("   export [name.wav]         - Export current MIDI to WAV audio file")
     print("\n System Integration:")
@@ -455,13 +460,24 @@ def soundfont(soundbank_name=None):
     folder_path = os.path.join(base_dir, "Sound Fonts")
     os.makedirs(folder_path, exist_ok=True)
 
-    if soundbank_name:
-        soundbank_name = clean_path(soundbank_name)
-        if os.path.isfile(soundbank_name):
-            process_sf2_drop(soundbank_name)
-            return active_bank
+    available_files = sorted([f for f in os.listdir(folder_path) if f.lower().endswith('.sf2')])
 
-    available_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.sf2')]
+    def resolve_sf_input(inp_str):
+        inp_str = clean_path(inp_str)
+        if os.path.isfile(inp_str):
+            return inp_str
+        if inp_str.isdigit():
+            idx = int(inp_str) - 1
+            if 0 <= idx < len(available_files):
+                return available_files[idx]
+        return inp_str
+
+    if soundbank_name:
+        resolved = resolve_sf_input(soundbank_name)
+        if os.path.isfile(resolved):
+            process_sf2_drop(resolved)
+            return active_bank
+        soundbank_name = resolved
 
     if not available_files and not soundbank_name:
         print("[!] No .sf2 files found in 'Sound Fonts' folder.")
@@ -469,14 +485,15 @@ def soundfont(soundbank_name=None):
 
     if soundbank_name is None:
         print("\n--- Available SoundFonts ---")
-        for file_name in available_files:
-            print(f" * {file_name}")
+        for index, file_name in enumerate(available_files, 1):
+            print(f" {index}. {file_name}")
         print("----------------------------\n")
-        soundbank_name = input("Enter soundbank name (without .sf2) or drag .sf2 file here: ").strip()
-        soundbank_name = clean_path(soundbank_name)
-        if os.path.isfile(soundbank_name):
-            process_sf2_drop(soundbank_name)
+        soundbank_name = input("Enter soundbank number/name or drag .sf2 file here: ").strip()
+        resolved = resolve_sf_input(soundbank_name)
+        if os.path.isfile(resolved):
+            process_sf2_drop(resolved)
             return active_bank
+        soundbank_name = resolved
 
     clean_name = soundbank_name[:-4] if soundbank_name.lower().endswith('.sf2') else soundbank_name
     rel_path = f"Sound Fonts/{clean_name}.sf2"

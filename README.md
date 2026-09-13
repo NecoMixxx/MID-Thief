@@ -9,13 +9,13 @@ High-performance, cross-platform CLI MIDI player and synthesis engine built with
 3. Add MIDI: Place .mid files into "Tracks_MIDI/" or right-click any .mid file -> "Import to MID-Thief".
 4. Run Application: Double-click `MID-Thief.bat` or run `python MID-Thief.py [optional_track.mid]`.
 5. Basic Commands:
-   - load track_name : Load track from Tracks_MIDI/ (omit .mid)
-   - start          : Begin playback in background
-   - sf bank_name   : Switch active SoundFont instantly
-   - seek 45        : Jump to 45s with cassette scrubbing
-   - export out.wav : Open file dialog and render loaded track to WAV
-   - install        : Register Windows Explorer right-click options
-   - break          : Exit application safely
+   - load track_name        : Load track from Tracks_MIDI/ (omit .mid)
+   - start                  : Begin playback in background
+   - sf bank_name/number    : Switch active SoundFont instantly
+   - seek 45                : Jump to 45s with cassette scrubbing
+   - export out.wav         : Open file dialog and render loaded track to WAV
+   - install                : Register Windows Explorer right-click options
+   - break                  : Exit application safely
 
 --- SYSTEM REQUIREMENTS & DEPENDENCIES ---
 
