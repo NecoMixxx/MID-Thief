@@ -456,52 +456,67 @@ def volume(volume_track=None):
 def soundfont(soundbank_name=None):
     global active_bank, sf_id, channel_programs, vol
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
     folder_path = os.path.join(base_dir, "Sound Fonts")
     os.makedirs(folder_path, exist_ok=True)
 
-    available_files = sorted([f for f in os.listdir(folder_path) if f.lower().endswith('.sf2')])
+    available_files = sorted([f for f in os.listdir(folder_path) if f.lower().endswith(('.sf2', '.sf3'))])
 
-    def resolve_sf_input(inp_str):
-        inp_str = clean_path(inp_str)
-        if os.path.isfile(inp_str):
-            return inp_str
-        if inp_str.isdigit():
-            idx = int(inp_str) - 1
-            if 0 <= idx < len(available_files):
-                return available_files[idx]
-        return inp_str
+    if soundbank_name is not None:
+        soundbank_name = clean_path(str(soundbank_name))
 
-    if soundbank_name:
-        resolved = resolve_sf_input(soundbank_name)
-        if os.path.isfile(resolved):
-            process_sf2_drop(resolved)
-            return active_bank
-        soundbank_name = resolved
+    if soundbank_name and soundbank_name.isdigit():
+        idx = int(soundbank_name) - 1
+        if 0 <= idx < len(available_files):
+            soundbank_name = available_files[idx]
+        else:
+            print(f"[!] Invalid index: {soundbank_name}. Total available SoundFonts: {len(available_files)}")
+            return None
 
-    if not available_files and not soundbank_name:
-        print("[!] No .sf2 files found in 'Sound Fonts' folder.")
-        return None
+    if not soundbank_name:
+        if not available_files:
+            print("[!] No .sf2/.sf3 files found in 'Sound Fonts' folder.")
+            return None
 
-    if soundbank_name is None:
         print("\n--- Available SoundFonts ---")
         for index, file_name in enumerate(available_files, 1):
             print(f" {index}. {file_name}")
         print("----------------------------\n")
-        soundbank_name = input("Enter soundbank number/name or drag .sf2 file here: ").strip()
-        resolved = resolve_sf_input(soundbank_name)
-        if os.path.isfile(resolved):
-            process_sf2_drop(resolved)
-            return active_bank
-        soundbank_name = resolved
+        
+        user_input = input("Enter soundbank number/name or drag .sf2 file here: ").strip()
+        user_input = clean_path(user_input)
 
-    clean_name = soundbank_name[:-4] if soundbank_name.lower().endswith('.sf2') else soundbank_name
-    rel_path = f"Sound Fonts/{clean_name}.sf2"
-    abs_file_path = os.path.join(folder_path, f"{clean_name}.sf2")
+        if user_input.isdigit():
+            idx = int(user_input) - 1
+            if 0 <= idx < len(available_files):
+                soundbank_name = available_files[idx]
+            else:
+                print("[!] Invalid index.")
+                return None
+        else:
+            soundbank_name = user_input
+
+    if not soundbank_name:
+        return None
+
+    if os.path.isfile(soundbank_name):
+        process_sf2_drop(soundbank_name)
+        return active_bank
+
+    ext = os.path.splitext(soundbank_name)[1]
+    if not ext:
+        ext = ".sf2"
+    clean_name = os.path.splitext(soundbank_name)[0]
+    
+    abs_file_path = os.path.join(folder_path, f"{clean_name}{ext}")
 
     try:
         if os.path.isfile(abs_file_path):
-            active_bank = f"{clean_name}.sf2"
+            active_bank = f"{clean_name}{ext}"
             if sf_id is not None:
                 fs.sfunload(sf_id)
             sf_id = fs.sfload(abs_file_path)
@@ -510,10 +525,10 @@ def soundfont(soundbank_name=None):
             for ch in range(16):
                 fs.program_change(ch, channel_programs[ch])
 
-            print(f"[+] Active SoundFont changed to: {rel_path}")
+            print(f"[+] Active SoundFont changed to: Sound Fonts/{active_bank}")
             return active_bank
         else:
-            print(f"[!] SoundFont file '{rel_path}' not found.")
+            print(f"[!] SoundFont file 'Sound Fonts/{clean_name}{ext}' not found.")
             return None
     except Exception as e:
         print(f"[!] Error changing SoundFont: {e}")
@@ -682,7 +697,7 @@ try:
 
         elif command in ["soundfont", "sf"]:
             if len(parts) > 1:
-                soundfont(str(parts[1].strip()))
+                soundfont(parts[1].strip())
             else:
                 soundfont(soundbank_name=None)
 
