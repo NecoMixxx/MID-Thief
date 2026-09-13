@@ -1,19 +1,17 @@
 import os
-import mido
+import sys
+import shutil
+import array
+import wave
+import threading
+import platform
 from time import sleep as time
 import tkinter as tk
 from tkinter import filedialog
-import threading
-import platform
-import wave
-import random
-import sys
-import shutil
-import subprocess
+import mido
 
 if platform.system() == "Windows":
-    import winreg
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
     os.environ["PATH"] = base_dir + os.pathsep + os.environ.get("PATH", "")
     if hasattr(os, 'add_dll_directory'):
         try:
@@ -56,6 +54,12 @@ seek_direction = ""
 tail = False
 
 
+def get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def clean_path(path_str: str) -> str:
     if not path_str:
         return ""
@@ -90,20 +94,18 @@ def process_sf2_drop(file_path):
         print(f"[!] File not found: {file_path}")
         return
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = get_base_dir()
     sf_folder = os.path.join(base_dir, "Sound Fonts")
     os.makedirs(sf_folder, exist_ok=True)
 
     orig_name = os.path.basename(file_path)
-    default_name = os.path.splitext(orig_name)[0]
-
-    dest_path = os.path.join(sf_folder, f"{default_name}.sf2")
+    dest_path = os.path.join(sf_folder, orig_name)
 
     try:
         if os.path.abspath(file_path) != os.path.abspath(dest_path):
             shutil.copy2(file_path, dest_path)
-        print(f"[+] Saved SoundFont to 'Sound Fonts/{default_name}.sf2'")
-        soundfont(default_name)
+        print(f"[+] Saved SoundFont to 'Sound Fonts/{orig_name}'")
+        soundfont(orig_name)
     except Exception as e:
         print(f"[!] Error processing SoundFont file: {e}")
 
@@ -114,7 +116,7 @@ def import_midi_file(file_path):
         print(f"[!] File not found: {file_path}")
         return
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = get_base_dir()
     midi_folder = os.path.join(base_dir, "Tracks_MIDI")
     os.makedirs(midi_folder, exist_ok=True)
 
@@ -127,75 +129,12 @@ def import_midi_file(file_path):
         print(f"[!] Error importing MIDI: {e}")
 
 
-def manage_context_menu(action: str):
-    if platform.system() != "Windows":
-        print("[!] Context menu integration is only supported on Windows.")
-        return
-
-    if getattr(sys, 'frozen', False):
-        launcher_path = os.path.abspath(sys.executable)
-        command_prefix = f'"{launcher_path}"'
-    else:
-        launcher_path = os.path.abspath(sys.executable)
-        script_path = os.path.abspath(__file__)
-        command_prefix = f'"{launcher_path}" "{script_path}"'
-
-    menu_entries = [
-        (r"Software\Classes\SystemFileAssociations\.mid\shell\MIDThief_Import", "Import to MID-Thief", f'{command_prefix} --import "%1"'),
-        (r"Software\Classes\SystemFileAssociations\.mid\shell\MIDThief_Export", "Convert to WAV (MID-Thief)", f'{command_prefix} --export "%1"'),
-        (r"Software\Classes\SystemFileAssociations\.midi\shell\MIDThief_Import", "Import to MID-Thief", f'{command_prefix} --import "%1"'),
-        (r"Software\Classes\SystemFileAssociations\.midi\shell\MIDThief_Export", "Convert to WAV (MID-Thief)", f'{command_prefix} --export "%1"'),
-        (r"Software\Classes\SystemFileAssociations\.sf2\shell\MIDThief_SF2", "Import SoundFont to MID-Thief", f'{command_prefix} --sf2 "%1"'),
-        (r"Software\Classes\SystemFileAssociations\.sf3\shell\MIDThief_SF2", "Import SoundFont to MID-Thief", f'{command_prefix} --sf2 "%1"'),
-    ]
-
-    action = action.lower()
-    if action in ["install", "--install"]:
-        print("[i] Registering context menu entries in Windows Registry...")
-        try:
-            for subkey_path, label, cmd in menu_entries:
-                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, subkey_path) as key:
-                    winreg.SetValue(key, "", winreg.REG_SZ, label)
-                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"{subkey_path}\\command") as key:
-                    winreg.SetValue(key, "", winreg.REG_SZ, cmd)
-            print("[+] Context menu integration installed successfully!")
-            print("[i] Right-click any .mid or .sf2 file to test.")
-        except Exception as e:
-            print(f"[!] Error installing context menu: {e}")
-
-    elif action in ["uninstall", "--uninstall"]:
-        print("[i] Removing context menu entries from Windows Registry...")
-        for subkey_path, _, _ in menu_entries:
-            try:
-                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, f"{subkey_path}\\command")
-            except FileNotFoundError:
-                pass
-            except Exception as e:
-                print(f"[!] Error deleting command key for {subkey_path}: {e}")
-
-            try:
-                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey_path)
-            except FileNotFoundError:
-                pass
-            except Exception as e:
-                print(f"[!] Error deleting key {subkey_path}: {e}")
-        print("[+] Context menu entries removed successfully.")
-
-
 def process_startup_args():
     global mid, is_playing, is_pause
     if len(sys.argv) <= 1:
         return
 
     args = sys.argv[1:]
-
-    if any(arg.lower() in ["install", "--install"] for arg in args):
-        manage_context_menu("install")
-        sys.exit(0)
-
-    if any(arg.lower() in ["uninstall", "--uninstall"] for arg in args):
-        manage_context_menu("uninstall")
-        sys.exit(0)
 
     if "--import" in args:
         idx = args.index("--import")
@@ -242,10 +181,10 @@ def process_startup_args():
 
 
 def main():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = get_base_dir()
     default_sf = os.path.join(base_dir, "Sound Fonts", active_bank)
     if os.path.isfile(default_sf):
-        soundfont("gm_florestan")
+        soundfont(active_bank)
     
     process_startup_args()
     help_command()
@@ -267,7 +206,7 @@ def load_midi(name=None):
         abs_file_path = name
         rel_path = os.path.basename(name)
     else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = get_base_dir()
         folder_path = os.path.join(base_dir, "Tracks_MIDI")
         os.makedirs(folder_path, exist_ok=True)
         
@@ -302,7 +241,6 @@ def play_midi():
     while is_playing:
         current_sec = 0.0
         silence_all()
-        tape_tick = 0
 
         for msg in mid:
             if not is_playing:
@@ -312,10 +250,11 @@ def play_midi():
                 time(0.05)
 
             if is_seeking:
-                if seek_target < current_sec:
-                    break
+                if seek_target is not None:
+                    target = seek_target
+                    if target < current_sec:
+                        break
 
-                if current_sec < seek_target:
                     current_sec += msg.time
 
                     if msg.type == 'program_change':
@@ -326,18 +265,15 @@ def play_midi():
                     elif msg.type == 'pitchwheel':
                         fs.pitch_bend(msg.channel, msg.pitch)
 
-                    tape_tick += 1
-                    if tape_tick % 25 == 0:
-                        high_note = random.randint(90, 105)
-                        fs.noteon(9, high_note, 15)
-                        time(0.002)
-                        fs.noteoff(9, high_note)
+                    if current_sec >= target:
+                        is_seeking = False
+                        seek_target = None
+                        silence_all()
+                        for ch in range(16):
+                            fs.program_change(ch, channel_programs[ch])
+                            fs.cc(ch, 7, vol)
+                        print(f"[{seek_direction}] Seek completed. Resuming at: {current_sec:.2f} sec.")
                     continue
-                else:
-                    is_seeking = False
-                    seek_target = None
-                    silence_all()
-                    print(f"[{seek_direction}] Seek completed. Current position: {current_sec:.2f} sec.")
 
             if msg.time > 0:
                 time(msg.time)
@@ -355,10 +291,10 @@ def play_midi():
                 channel_programs[msg.channel] = msg.program
                 fs.program_change(msg.channel, msg.program)
 
-        if is_seeking and seek_target is not None and seek_target < current_sec:
+        if is_seeking:
             continue
 
-        if track_cycle and is_playing and not is_seeking:
+        if track_cycle and is_playing:
             continue
         else:
             break
@@ -391,13 +327,13 @@ def seek(sec=None):
         print(f"[!] Time out of bounds! Range: 0 to {mid.length:.2f} seconds.")
         return
 
-    silence_all()
-    
     seek_direction = "REWIND <<" if sec < current_sec else "FAST FORWARD >>"
     seek_target = sec
     is_seeking = True
     is_pause = False
     print(f"[{seek_direction}] Seeking to {sec:.2f} seconds...")
+    if not is_playing:
+        threading.Thread(target=play_midi, daemon=True).start()
 
 
 def help_command():
@@ -420,8 +356,6 @@ def help_command():
     print("   tail                      - Toggle reverb tail recording")
     print("   export [name.wav]         - Export current MIDI to WAV audio file")
     print("\n System Integration:")
-    print("   install                   - Add Windows context menu entries")
-    print("   uninstall                 - Remove Windows context menu entries")
     print("   help                      - Show this menu")
     print("   break                     - Exit the application")
     print("=========================================================\n")
@@ -456,11 +390,7 @@ def volume(volume_track=None):
 def soundfont(soundbank_name=None):
     global active_bank, sf_id, channel_programs, vol
 
-    if getattr(sys, 'frozen', False):
-        base_dir = os.path.dirname(os.path.abspath(sys.executable))
-    else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-
+    base_dir = get_base_dir()
     folder_path = os.path.join(base_dir, "Sound Fonts")
     os.makedirs(folder_path, exist_ok=True)
 
@@ -507,16 +437,21 @@ def soundfont(soundbank_name=None):
         process_sf2_drop(soundbank_name)
         return active_bank
 
-    ext = os.path.splitext(soundbank_name)[1]
-    if not ext:
-        ext = ".sf2"
-    clean_name = os.path.splitext(soundbank_name)[0]
-    
-    abs_file_path = os.path.join(folder_path, f"{clean_name}{ext}")
+    target_file = None
+    for item in available_files:
+        if item.lower() == soundbank_name.lower() or os.path.splitext(item)[0].lower() == soundbank_name.lower():
+            target_file = item
+            break
+
+    if not target_file:
+        ext = os.path.splitext(soundbank_name)[1]
+        target_file = soundbank_name if ext else f"{soundbank_name}.sf2"
+
+    abs_file_path = os.path.join(folder_path, target_file)
 
     try:
         if os.path.isfile(abs_file_path):
-            active_bank = f"{clean_name}{ext}"
+            active_bank = target_file
             if sf_id is not None:
                 fs.sfunload(sf_id)
             sf_id = fs.sfload(abs_file_path)
@@ -528,7 +463,7 @@ def soundfont(soundbank_name=None):
             print(f"[+] Active SoundFont changed to: Sound Fonts/{active_bank}")
             return active_bank
         else:
-            print(f"[!] SoundFont file 'Sound Fonts/{clean_name}{ext}' not found.")
+            print(f"[!] SoundFont file 'Sound Fonts/{target_file}' not found.")
             return None
     except Exception as e:
         print(f"[!] Error changing SoundFont: {e}")
@@ -556,22 +491,48 @@ def export_to_wav(output_filename=None):
         print("[!] Export canceled.")
         return
 
-    print(f"[+] Exporting MIDI to {output_path}...")
+    # Поиск пути к SoundFont (проверяем все возможные расположения)
+    base_dir = get_base_dir()
+    sf_name = os.path.basename(active_bank)
+    
+    possible_paths = [
+        active_bank if os.path.isabs(active_bank) else "",
+        os.path.join(base_dir, "Sound Fonts", sf_name),
+        os.path.join(os.getcwd(), "Sound Fonts", sf_name),
+        os.path.join(os.path.dirname(sys.executable), "Sound Fonts", sf_name)
+    ]
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    temp_fs = fluidsynth.Synth()
-    sf_path = os.path.join(base_dir, "Sound Fonts", active_bank)
+    sf_path = None
+    for p in possible_paths:
+        if p and os.path.isfile(p):
+            sf_path = p
+            break
 
-    if os.path.isfile(sf_path):
-        temp_fs.sfload(sf_path)
-    else:
-        print("[!] Active SoundFont file not found.")
+    if not sf_path:
+        print(f"[!] Active SoundFont file not found: {sf_name}")
         return
+
+    print(f"[+] Exporting MIDI to {output_path} using SoundFont: {sf_path}...")
+
+    temp_fs = fluidsynth.Synth()
+    temp_fs.sfload(sf_path)
 
     for ch in range(16):
         temp_fs.cc(ch, 7, vol)
+        temp_fs.program_change(ch, channel_programs[ch])
 
     sample_rate = 44100
+
+    def render_audio_bytes(num_samples):
+        if num_samples <= 0:
+            return b""
+        samples = temp_fs.get_samples(num_samples)
+        if isinstance(samples, bytes):
+            return samples
+        elif hasattr(samples, 'tobytes'):
+            return samples.tobytes()
+        else:
+            return array.array('h', samples).tobytes()
 
     try:
         with wave.open(output_path, 'wb') as wav_file:
@@ -583,8 +544,8 @@ def export_to_wav(output_filename=None):
                 if msg.time > 0:
                     num_samples = int(msg.time * sample_rate)
                     if num_samples > 0:
-                        samples = temp_fs.get_stereo_samples(num_samples)
-                        wav_file.writeframes(samples.tobytes())
+                        raw_data = render_audio_bytes(num_samples)
+                        wav_file.writeframes(raw_data)
 
                 if msg.type == 'note_on':
                     temp_fs.noteon(msg.channel, msg.note, msg.velocity)
@@ -599,8 +560,8 @@ def export_to_wav(output_filename=None):
 
             if tail:
                 tail_samples = int(2.0 * sample_rate)
-                tail_data = temp_fs.get_stereo_samples(tail_samples)
-                wav_file.writeframes(tail_data.tobytes())
+                raw_tail = render_audio_bytes(tail_samples)
+                wav_file.writeframes(raw_tail)
 
         print(f"[+] Export completed successfully: {output_path} :-)")
     except Exception as e:
@@ -638,12 +599,6 @@ try:
         if command == "break":
             cycle = cycle_func()
             time(0.5)
-
-        elif command == "install":
-            manage_context_menu("install")
-
-        elif command == "uninstall":
-            manage_context_menu("uninstall")
 
         elif command in ["import", "load"]:
             if len(parts) > 1:
