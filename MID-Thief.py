@@ -6,7 +6,6 @@ import threading
 cycle = True
 Is_Pause = True
 Is_Playing = False
-outport = mido.open_output()
 mid = None
 vol: int = 67
 Track_cycle: bool = True
